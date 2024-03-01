@@ -18,7 +18,9 @@ make
 
 ## Hardware
 
-For easier adhoc connection to the BIOS Chip I used a SOIC8 SOP8 test clip.
+For easier adhoc connection to the BIOS Chip I used a SOIC8 SOP8 test clip. You might need
+to add a high value pull-up resistor (e.g, 220kOhm) connecting the SCK pin with the 3.3V out
+from the pico.
 
 ## Usage
 
