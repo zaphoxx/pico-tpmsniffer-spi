@@ -14,16 +14,10 @@ cmake ..
 make
 ```
 
-## Hardware ( !LPC-TPMSNIFFING ONLY! )
+## Hardware
 
 The board files are in `hardware/`, the Pogo pins used are of the type: P50-B1-16mm
 
 ## Usage
 
-LPC-TPM-SNIFFING:
 Just connect to the serial port, boot your machine, and push against the card connector!
-
-SPI-TPM-SNIFFING:
-Prerequisites: BIOS-Chip and TPM-Chip use the same SPI-Bus
-Connect SO (MISO), CLK (clock), SCK (select) to GPIO 2,3,4 of the PICO! 
-Connect GND Pico with GND of the BIOS Chip!
