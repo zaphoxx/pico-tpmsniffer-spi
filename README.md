@@ -31,3 +31,15 @@ BIOS-Chip and TPM-Chip use the same SPI-Bus
 * Connect GND Pico with GND of the BIOS Chip!
 * Connect pico to serial terminal e.g., minicom
 * Boot laptop and loot
+
+## Description
+
+The sniffer collects the data bytes from SO line looking for response signature 0x80000001.
+It then searches the VMK header and once found will output the 32 byte long key.
+
+In this version of the sniffer it does not make use of the SI line to search for the actual
+TPM read command.
+
+The sniffer was tested on a Lenovo T460 with TPM1.2. On the laptop i had the actual TPM 
+communication starts about 27 seconds about the same time the splash screen shows up on
+the screen. About 5-10 seconds later you should get the key result.   
