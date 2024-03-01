@@ -47,6 +47,9 @@ static inline uint32_t fetch(PIO pio, uint sm) {
 static inline uint8_t fetch_data(PIO pio, uint sm) {
     char data, data1, data2, data3, data4;
 
+    // looking for the signature 0x80000001 before the 
+    // actual data byte from the TPM chip response (SO)
+    // return the data byte only, skip everything else
     while (1) {
 	data1 = (char) (pio_sm_get_blocking(pio, sm) );
 	if (data1 != 0x80) continue;

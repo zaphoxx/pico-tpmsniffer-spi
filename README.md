@@ -2,7 +2,9 @@
 
 > This is experimental software and hardware. It's not ready to use for professional or production use.
 
-The board (in /hardware/) is compatible with the "Debug Card" connector found on some Lenovo laptops. The firmware currently only supports LPC, not SPI TPMs.
+This is a variation for SPI of the original TPMSniffer from Thomas 'stacksmashing' Roth - code@stacksmashing.net
+At the current state this is not compatible with the original hardware design (I removed the hardware/ folder from
+this repo to avoid confusion).
 
 ## Building
 
@@ -14,16 +16,18 @@ cmake ..
 make
 ```
 
-## Hardware ( !LPC-TPMSNIFFING ONLY! )
+## Hardware
 
-The board files are in `hardware/`, the Pogo pins used are of the type: P50-B1-16mm
+For easier adhoc connection to the BIOS Chip I used a SOIC8 SOP8 test clip.
 
 ## Usage
 
-LPC-TPM-SNIFFING:
-Just connect to the serial port, boot your machine, and push against the card connector!
+### SPI-TPM-SNIFFING:
+Prerequisites
 
-SPI-TPM-SNIFFING:
-Prerequisites: BIOS-Chip and TPM-Chip use the same SPI-Bus
-Connect SO (MISO), CLK (clock), SCK (select) to GPIO 2,3,4 of the PICO! 
-Connect GND Pico with GND of the BIOS Chip!
+BIOS-Chip and TPM-Chip use the same SPI-Bus
+
+* Connect SO (MISO), CLK (clock), SCK (select) to GPIO 2,3,4 of the PICO! 
+* Connect GND Pico with GND of the BIOS Chip!
+* Connect pico to serial terminal e.g., minicom
+* Boot laptop and loot
