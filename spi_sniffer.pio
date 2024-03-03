@@ -41,6 +41,7 @@ static inline void spi_sniffer_program_init(PIO pio, uint sm, uint offset, uint 
     for(int i=0; i < 3; i++) {
         pio_gpio_init(pio, base_pin + i);
     }
+    gpio_pull_up(base_pin + 2); // set inner pull up resistor for SCK pin
     // initialize JUMP PIN
     pio_gpio_init(pio, jmp_pin);
 
