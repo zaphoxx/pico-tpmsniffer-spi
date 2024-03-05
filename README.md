@@ -29,7 +29,7 @@ Prerequisites
 
 BIOS-Chip and TPM-Chip use the same SPI-Bus
 
-* Connect SO (MISO), CLK (clock), SCK (select) to GPIO 2,3,4 of the PICO! 
+* Connect DI, SO (MISO), CLK (clock), SCK (select) to GPIO 2,3,4,5 of the PICO! 
 * Connect GND Pico with GND of the BIOS Chip!
 * Connect pico to serial terminal e.g., minicom
 * Boot laptop and loot
