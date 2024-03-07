@@ -36,12 +36,12 @@ BIOS-Chip and TPM-Chip use the same SPI-Bus
 
 ## Description
 
-The sniffer collects the data bytes from SO line looking for response signature 0x80000001.
+The sniffer searches for the "Read Fifo_0" signature 0x8XD40024 where X indicates
+the number of bytes the TPM is expected to transfer in response to this read request.
 It then searches the VMK header and once found will output the 32 byte long key.
-
-In this version of the sniffer it does not make use of the SI line to search for the actual
-TPM read command.
 
 The sniffer was tested on a Lenovo T460 with TPM1.2. On the laptop i had the actual TPM 
 communication starts about 27 seconds about the same time the splash screen shows up on
-the screen. About 5-10 seconds later you should get the key result.   
+the screen. About 5-10 seconds later you should get the key result.
+On another Lenovo T460 (different mainboard version) the TPM communication starts much sooner
+(~9seconds after pushing the button).
