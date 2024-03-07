@@ -10,3 +10,7 @@ compile_commands.json
 CTestTestfile.cmake
 _deps
 ./build
+.main.c.swp
+.vscode/launch.json
+.vscode/tasks.json
+build-pico-tpmsniffer-spi.sh
