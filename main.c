@@ -14,6 +14,9 @@
 
 #define JMP_PIN 5
 #define BASE_PIN 2
+#define TRIGGER_PIN 13
+#define PSELECT0 19
+#define PSELECT1 20
 
 unsigned char reverse(unsigned char b) {
    b = (b & 0xF0) >> 4 | (b & 0x0F) << 4;
@@ -41,7 +44,7 @@ enum state {
 
 static inline uint32_t fetch(PIO pio, uint sm) {
     uint32_t result_raw = pio_sm_get_blocking(pio, sm);
-    uint32_t result = fix_bit_format(result_raw); // i dont know why this is actually needed
+    uint32_t result = fix_bit_format(result_raw);
     return result;
 }
 
@@ -54,41 +57,35 @@ static inline uint8_t fetch_miso_byte(PIO pio, uint sm){
         miso_byte = miso_byte | ((char) ((data & miso_msk) >> (8-i)));
         miso_msk = miso_msk >> 2;
     }
+    //printf("--> %02X\n",miso_byte);
     return miso_byte;
 }
 
 
 static inline uint16_t fetch_message(PIO pio, uint sm) {
     uint32_t mosi_msg=0x0;
-    //uint32_t miso_msg=0x0;
     uint32_t data;
     bool init = true;
-    //printf("[fetch_message] \n");
     while(1)
     {
         char miso_byte = 0x0;
         char mosi_byte = 0x0;
         uint16_t mosi_msk = 0b0100000000000000;
-        //uint16_t miso_msk = 0b1000000000000000; 
         data = fetch(pio, sm);//( pio_sm_get_blocking(pio, sm) );
-        // untangle DO and DI parts
         for (int i = 0; i < 8 ; i++)
         {   
-            //miso_byte = miso_byte | ((char) ((data & miso_msk) >> (8-i))) ;
             mosi_byte = mosi_byte | ((char) ((data & mosi_msk) >> (7-i))) ;
-            //miso_msk = miso_msk >> 2;
             mosi_msk = mosi_msk >> 2;
         }
         if (init) {
             mosi_msg = mosi_msg | mosi_byte;
-            //miso_msg = miso_msg | miso_byte;    
         }else{
             mosi_msg = (mosi_msg << 8) | mosi_byte;
-            //miso_msg = (miso_msg << 8) | miso_byte;
         }
         init = false;
-
-        if (!((mosi_msg & 0xf0ff00ff) == 0x80D40024)) continue; 
+        //printf("[%08X] \n",mosi_msg);
+        if (!((mosi_msg & 0xf0ff00ff) == 0x80D40024)) continue;
+        
         // Read FIFO_0 0x8XD40024 where X holds the number of bytes to be transferred
         // 0b0000000 = 1 byte; 0b00000001 = 2 bytes ; 0b00000010 = 3 bytes etc. up to 64 bytes 
         uint16_t bytes_to_read = (uint16_t) ((mosi_msg >> 24) & 0xb11111) + 1;
@@ -115,6 +112,7 @@ void core1_entry() {
     uint sm = pio_claim_unused_sm(pio, true);
     spi_sniffer_program_init(pio, sm, offset, BASE_PIN, JMP_PIN);
     
+    
     while(1) {
         uint16_t bytes_to_read = fetch_message(pio, sm);
         for(int n=0; n < bytes_to_read; n++){
@@ -130,7 +128,19 @@ void core1_entry() {
 int main() {
     set_sys_clock_khz(270000, true); // 158us
     stdio_init_all();
-    sleep_ms(5000);
+    
+    gpio_init(TRIGGER_PIN);
+    gpio_init(PSELECT0);
+    gpio_init(PSELECT1);
+    gpio_set_dir(TRIGGER_PIN,1); // output
+    gpio_set_dir(PSELECT0,0); // input 
+    gpio_set_dir(PSELECT1,0); // input
+    gpio_pull_down(TRIGGER_PIN);
+    gpio_pull_down(PSELECT1);
+    gpio_pull_down(PSELECT0);
+    gpio_put(TRIGGER_PIN,0);
+
+    while (!stdio_usb_connected());
 
     puts(" _           ");
     puts("|_) o  _  _  ");
@@ -145,10 +155,20 @@ int main() {
     puts("                                                                 - by stacksmashing");
     puts("                                                                 - spi-tpmsniff by zaphoxx");
     puts("");
-    
-    printf("[+] Ready to sniff!\n");
     float f = (float) clock_get_hz(clk_sys);
     printf("[+] system clock frequency: %f Hz\n",f);
+    // Wait for Trigger Pin to be Set
+    // set it programmatically high 
+    // later use button to trigger sniff start
+    printf("[+] Push Laptops Start Button to start sniffing within the next 5 seconds!\n");
+    // remove once hw button is implemented
+    gpio_put(TRIGGER_PIN,1);
+    printf("[+] Ready in ...");
+    for (int i = 0 ; i < 5; i++){
+        printf("%d...", 5 - i);
+        sleep_ms(1000);
+    }
+    printf("...SNIFF...\n");
     
     multicore_launch_core1(core1_entry);
 

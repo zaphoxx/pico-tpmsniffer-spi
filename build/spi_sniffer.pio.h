@@ -12,31 +12,33 @@
 // spi_sniffer //
 // ----------- //
 
-#define spi_sniffer_wrap_target 2
-#define spi_sniffer_wrap 6
+#define spi_sniffer_wrap_target 0
+#define spi_sniffer_wrap 7
 
 static const uint16_t spi_sniffer_program_instructions[] = {
-    0x2023, //  0: wait   0 pin, 3                   
-    0x20a3, //  1: wait   1 pin, 3                   
             //     .wrap_target
+    0x38a3, //  0: wait   1 pin, 3        side 1     
+    0xe028, //  1: set    x, 8                       
     0x2022, //  2: wait   0 pin, 2                   
     0x20a2, //  3: wait   1 pin, 2                   
     0x00c6, //  4: jmp    pin, 6                     
-    0x0002, //  5: jmp    2                          
-    0x4002, //  6: in     pins, 2                    
+    0x1000, //  5: jmp    0               side 0     
+    0x5802, //  6: in     pins, 2         side 1     
+    0x0042, //  7: jmp    x--, 2                     
             //     .wrap
 };
 
 #if !PICO_NO_HARDWARE
 static const struct pio_program spi_sniffer_program = {
     .instructions = spi_sniffer_program_instructions,
-    .length = 7,
+    .length = 8,
     .origin = -1,
 };
 
 static inline pio_sm_config spi_sniffer_program_get_default_config(uint offset) {
     pio_sm_config c = pio_get_default_sm_config();
     sm_config_set_wrap(&c, offset + spi_sniffer_wrap_target, offset + spi_sniffer_wrap);
+    sm_config_set_sideset(&c, 2, true, false);
     return c;
 }
 
@@ -46,21 +48,23 @@ static inline void spi_sniffer_program_init(PIO pio, uint sm, uint offset, uint 
     for(int i=0; i < 4; i++) {
         pio_gpio_init(pio, base_pin + i);
     }
-    //gpio_pull_down(base_pin + 3); // set inner pull up resistor for SELET pin
-    // initialize JUMP PIN (Here this is actually not necessary)
-    // pio_gpio_init(pio, jmp_pin);
     // Set all pins to input (false = input)
     pio_sm_set_consecutive_pindirs(pio, sm, base_pin, 4, false);
     sm_config_set_in_pins(&c, base_pin);
     sm_config_set_jmp_pin(&c, jmp_pin);
+    // side set pin gpio 6 for additional monitoring / debug
+    pio_gpio_init(pio, 6);
+    sm_config_set_sideset_pins(&c, 6);
+    pio_sm_set_consecutive_pindirs(pio, sm, 6, 1, true);
+    gpio_pull_down(6);
     // set autopush at threshold 16 bit
-    // we are reading DO and DI at the same time
+    // we are reading DO and DI at the same time ( 2 * 8 bit)
     sm_config_set_in_shift (&c, false, true, 16);
     // Chain FIFOs together as we will *only* receive.
     // This will ensure we will not block.
     sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
-    // run at max clockrate
-    float div = 1.f ; //(float)clock_get_hz(clk_sys) / 135000000.0;
+    // we do not require specific cycle as we do have the clock signal
+    float div = 1.f; //(float) clock_get_hz(clk_sys) / 270000000.0; 
     sm_config_set_clkdiv(&c, div);
     // Load our configuration, and jump to the start of the program
     pio_sm_init(pio, sm, offset, &c);
