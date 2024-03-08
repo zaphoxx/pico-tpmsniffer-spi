@@ -47,6 +47,7 @@ and if successfully identified will output the VMK.
 
 The sniffer was tested on a Lenovo T460 with TPM1.2. On the laptop i had the actual TPM 
 communication starts about 27 seconds about the same time the splash screen shows up on
-the screen. About 5-10 seconds later you should get the key result.   
-I also tested on another Lenovo T460 which is a slightly different model. There the key is captured 
-~9 seconds after starting the boot process.
+the screen. About 5-10 seconds later you should get the key result.
+On another Lenovo T460 (different mainboard version) the TPM communication starts much sooner
+(~9seconds after pushing the button).
+
