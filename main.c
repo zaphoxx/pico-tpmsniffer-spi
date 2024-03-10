@@ -15,8 +15,8 @@
 #define JMP_PIN 5
 #define BASE_PIN 2
 #define TRIGGER_PIN 13
-#define PSELECT0 19
-#define PSELECT1 20
+#define PSELECT0 14
+#define PSELECT1 15
 
 unsigned char reverse(unsigned char b) {
    b = (b & 0xF0) >> 4 | (b & 0x0F) << 4;
