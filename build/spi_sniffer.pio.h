@@ -13,32 +13,29 @@
 // ----------- //
 
 #define spi_sniffer_wrap_target 0
-#define spi_sniffer_wrap 7
+#define spi_sniffer_wrap 5
 
 static const uint16_t spi_sniffer_program_instructions[] = {
             //     .wrap_target
-    0x38a3, //  0: wait   1 pin, 3        side 1     
-    0xe028, //  1: set    x, 8                       
-    0x2022, //  2: wait   0 pin, 2                   
-    0x20a2, //  3: wait   1 pin, 2                   
-    0x00c6, //  4: jmp    pin, 6                     
-    0x1000, //  5: jmp    0               side 0     
-    0x5802, //  6: in     pins, 2         side 1     
-    0x0042, //  7: jmp    x--, 2                     
+    0x20a3, //  0: wait   1 pin, 3                   
+    0x2022, //  1: wait   0 pin, 2                   
+    0x20a2, //  2: wait   1 pin, 2                   
+    0x00c5, //  3: jmp    pin, 5                     
+    0x0000, //  4: jmp    0                          
+    0x4002, //  5: in     pins, 2                    
             //     .wrap
 };
 
 #if !PICO_NO_HARDWARE
 static const struct pio_program spi_sniffer_program = {
     .instructions = spi_sniffer_program_instructions,
-    .length = 8,
+    .length = 6,
     .origin = -1,
 };
 
 static inline pio_sm_config spi_sniffer_program_get_default_config(uint offset) {
     pio_sm_config c = pio_get_default_sm_config();
     sm_config_set_wrap(&c, offset + spi_sniffer_wrap_target, offset + spi_sniffer_wrap);
-    sm_config_set_sideset(&c, 2, true, false);
     return c;
 }
 
@@ -48,15 +45,16 @@ static inline void spi_sniffer_program_init(PIO pio, uint sm, uint offset, uint 
     for(int i=0; i < 4; i++) {
         pio_gpio_init(pio, base_pin + i);
     }
+    //gpio_pull_down(base_pin + 3);
     // Set all pins to input (false = input)
     pio_sm_set_consecutive_pindirs(pio, sm, base_pin, 4, false);
     sm_config_set_in_pins(&c, base_pin);
     sm_config_set_jmp_pin(&c, jmp_pin);
     // side set pin gpio 6 for additional monitoring / debug
-    pio_gpio_init(pio, 6);
-    sm_config_set_sideset_pins(&c, 6);
-    pio_sm_set_consecutive_pindirs(pio, sm, 6, 1, true);
-    gpio_pull_down(6);
+    //pio_gpio_init(pio, 6);
+    //sm_config_set_sideset_pins(&c, 6);
+    //pio_sm_set_consecutive_pindirs(pio, sm, 6, 1, true);
+    //gpio_pull_down(6);
     // set autopush at threshold 16 bit
     // we are reading DO and DI at the same time ( 2 * 8 bit)
     sm_config_set_in_shift (&c, false, true, 16);
